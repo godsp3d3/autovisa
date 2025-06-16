@@ -1,0 +1,28 @@
+body {
+  font-family: sans-serif;
+  background: #f5f5f5;
+  text-align: center;
+  margin: 0;
+  padding: 20px;
+}
+
+#container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  display: inline-block;
+  box-shadow: 0 0 10px #ccc;
+}
+
+img {
+  max-width: 80%;
+  height: auto;
+  margin: 10px 0;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 16px;
+  margin: 15px;
+  cursor: pointer;
+}
