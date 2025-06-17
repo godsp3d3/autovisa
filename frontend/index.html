@@ -3,6 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <title>Autovisa</title>
+    <style>
+        .quiz-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            margin-top: 20px;
+        }
+
+        .image-box {
+            flex: 1;
+        }
+
+        .image-box img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ccc;
+        }
+
+        .controls {
+            margin-top: 15px;
+        }
+    </style>
 </head>
 <body>
     <h1>Autovisa</h1>
@@ -10,15 +32,27 @@
     <label for="count">Kuinka monta autoa haluat tunnistaa?</label>
     <input type="number" id="count" min="1" max="50" value="5">
     <button onclick="startQuiz()">Aloita visa</button>
+    <button onclick="resetAndStart()">Aloita uusi visa</button>
     <hr>
 
     <div id="quiz" style="display:none;">
         <p><strong>Kuva <span id="currentIndex">1</span> / <span id="totalCount">?</span></strong></p>
-        <img id="cropped" src="" alt="Rajattu kuva" width="300"><br><br>
-        <input type="text" id="guess" placeholder="Arvauksesi"><br><br>
-        <button onclick="reveal()">Näytä koko kuva</button>
-        <button onclick="nextImage()">Seuraava kuva</button><br><br>
-        <img id="full" src="" alt="Koko kuva" style="display:none;" width="500">
+
+        <div class="quiz-container">
+            <div class="image-box">
+                <img id="cropped" src="" alt="Rajattu kuva">
+            </div>
+            <div class="image-box">
+                <img id="full" src="" alt="Koko kuva" style="display:none;">
+            </div>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="guess" placeholder="Arvauksesi">
+            <br><br>
+            <button onclick="reveal()">Näytä koko kuva</button>
+            <button onclick="nextImage()">Seuraava kuva</button>
+        </div>
     </div>
 
     <script>
@@ -54,6 +88,19 @@
             showImage();
         }
 
+        async function resetAndStart() {
+            try {
+                const response = await fetch("/api/resetQuizImages", { method: "POST" });
+                if (response.ok) {
+                    startQuiz();
+                } else {
+                    alert("Virhe tyhjentäessä kuvia.");
+                }
+            } catch (e) {
+                alert("Yhteysvirhe: " + e.message);
+            }
+        }
+
         function showImage() {
             const data = imageList[current];
             document.getElementById("currentIndex").textContent = current + 1;
@@ -79,5 +126,3 @@
     </script>
 </body>
 </html>
-
-
