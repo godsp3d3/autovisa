@@ -48,4 +48,3 @@ def fetch_and_crop_car_image():
     cropped_url = cropped_blob_client.url
 
     return json.dumps({"full_image_url": full_url, "cropped_image_url": cropped_url})
-
