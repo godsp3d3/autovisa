@@ -27,7 +27,7 @@ def fetch_and_crop_car_image():
     ]
 
     variants = [
-        "", "car", "front view", "rear view", "interior", "dashboard", "side profile",
+        "car", "front view", "rear view", "interior", "dashboard", "side profile",
         "logo", "classic", "sports", "suv", "sedan", "electric"
     ]
 
