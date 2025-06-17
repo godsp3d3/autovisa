@@ -14,11 +14,40 @@ CROPPED_CONTAINER = "cropped-details"
 
 def fetch_and_crop_car_image():
     # Fetch image from Pixabay
-    terms = [
-        "bmw front", "audi rear", "mercedes coupe", "classic car", "pickup truck", 
-        "car dashboard", "vintage car", "sports car", "luxury car", "electric vehicle"
+    base_terms = [
+    "audi", "bmw", "mercedes", "volkswagen", "toyota", "honda", "ford", "chevrolet",
+    "nissan", "hyundai", "kia", "mazda", "subaru", "volvo", "peugeot", "renault",
+    "citroen", "fiat", "jeep", "dodge", "ram", "gmc", "cadillac", "chrysler",
+    "buick", "lincoln", "tesla", "porsche", "ferrari", "lamborghini", "maserati",
+    "alfa romeo", "aston martin", "bentley", "rolls royce", "lotus", "jaguar",
+    "land rover", "mini", "seat", "skoda", "suzuki", "saab", "opel", "smart",
+    "acura", "infiniti", "lexus", "genesis", "daewoo", "dacia", "hummer",
+    "isuzu", "mg", "polestar", "proton", "scion", "ssangyong", "tata", "uaz",
+    "zastava", "byd", "nio", "chery", "geely", "great wall", "lancia", "lucid",
+    "rivian", "vinfast"
     ]
-    search_term = random.choice(terms)
+    
+    variants = [
+    "",                # brand only
+    "car",             # brand car
+    "front view",      # brand front view
+    "rear view",       # brand rear view
+    "interior",        # brand interior
+    "dashboard",       # brand dashboard
+    "side profile",    # brand side profile
+    "logo",            # brand logo
+    "classic",         # brand classic
+    "sports",          # brand sports
+    "suv",             # brand suv
+    "sedan",           # brand sedan
+    "electric"         # brand electric
+    ]
+ 
+    brand = random.choice(base_terms)
+    modifier = random.choice(variants)
+
+    # Combine into a search term
+    search_term = f"{brand} {modifier}".strip()
     page = random.randint(1, 5)  # käytetään useita sivuja
 
     response = requests.get(f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={search_term}&image_type=photo&per_page=50&page={page}&order=latest")
