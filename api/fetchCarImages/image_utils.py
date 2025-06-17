@@ -14,7 +14,14 @@ CROPPED_CONTAINER = "cropped-details"
 
 def fetch_and_crop_car_image():
     # Fetch image from Pixabay
-    response = requests.get(f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q=car&image_type=photo&per_page=3")
+    terms = [
+        "bmw front", "audi rear", "mercedes coupe", "classic car", "pickup truck", 
+        "car dashboard", "vintage car", "sports car", "luxury car", "electric vehicle"
+    ]
+    search_term = random.choice(terms)
+    page = random.randint(1, 5)  # käytetään useita sivuja
+
+    response = requests.get(f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={search_term}&image_type=photo&per_page=50&page={page}&order=latest")
     data = response.json()
     hits = data.get("hits", [])
     if not hits:
