@@ -5,38 +5,79 @@
     <title>Autovisa</title>
 </head>
 <body>
-    <h1>Arvaa auton merkki tai malli</h1>
+    <h1>Autovisa</h1>
 
-    <button onclick="loadImage()">Uusi kuva</button><br><br>
+    <label for="count">Kuinka monta autoa haluat tunnistaa?</label>
+    <input type="number" id="count" min="1" max="50" value="5">
+    <button onclick="startQuiz()">Aloita visa</button>
+    <hr>
 
-    <img id="cropped" src="" alt="Rajattu kuva" width="300"><br><br>
-
-    <input type="text" id="guess" placeholder="Arvauksesi"><br><br>
-    <button onclick="reveal()">Näytä koko kuva</button><br><br>
-
-    <img id="full" src="" alt="Koko kuva" style="display:none;" width="500">
+    <div id="quiz" style="display:none;">
+        <p><strong>Kuva <span id="currentIndex">1</span> / <span id="totalCount">?</span></strong></p>
+        <img id="cropped" src="" alt="Rajattu kuva" width="300"><br><br>
+        <input type="text" id="guess" placeholder="Arvauksesi"><br><br>
+        <button onclick="reveal()">Näytä koko kuva</button>
+        <button onclick="nextImage()">Seuraava kuva</button><br><br>
+        <img id="full" src="" alt="Koko kuva" style="display:none;" width="500">
+    </div>
 
     <script>
-        async function loadImage() {
-            try {
-                const response = await fetch("/api/fetchCarImages");
-                if (!response.ok) throw new Error("Virhe haettaessa kuvaa.");
-                const data = await response.json();
-                const timestamp = new Date().getTime(); 
-                document.getElementById("cropped").src = data.cropped_image_url;
-                document.getElementById("full").src = data.full_image_url;
-                document.getElementById("full").style.display = "none"; // piilota täysi kuva
-            } catch (error) {
-                alert("Kuvien lataus epäonnistui: " + error.message);
+        let imageList = [];
+        let current = 0;
+
+        async function startQuiz() {
+            const count = parseInt(document.getElementById("count").value);
+            if (isNaN(count) || count <= 0) {
+                alert("Anna kelvollinen määrä kuvia.");
+                return;
             }
+
+            imageList = [];
+            current = 0;
+            document.getElementById("quiz").style.display = "none";
+            document.getElementById("cropped").src = "";
+            document.getElementById("full").src = "";
+
+            for (let i = 0; i < count; i++) {
+                try {
+                    const response = await fetch("/api/fetchCarImages");
+                    const data = await response.json();
+                    imageList.push(data);
+                } catch (e) {
+                    alert("Kuvan haku epäonnistui: " + e.message);
+                    return;
+                }
+            }
+
+            document.getElementById("totalCount").textContent = imageList.length;
+            document.getElementById("quiz").style.display = "block";
+            showImage();
+        }
+
+        function showImage() {
+            const data = imageList[current];
+            document.getElementById("currentIndex").textContent = current + 1;
+            document.getElementById("cropped").src = data.cropped_image_url + "?t=" + Date.now();
+            document.getElementById("full").src = data.full_image_url + "?t=" + Date.now();
+            document.getElementById("full").style.display = "none";
+            document.getElementById("guess").value = "";
         }
 
         function reveal() {
             document.getElementById("full").style.display = "block";
         }
 
-        loadImage();
+        function nextImage() {
+            if (current < imageList.length - 1) {
+                current++;
+                showImage();
+            } else {
+                alert("Autovisa on suoritettu!");
+                document.getElementById("quiz").style.display = "none";
+            }
+        }
     </script>
 </body>
 </html>
+
 
