@@ -12,6 +12,11 @@ AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "
 FULL_CONTAINER = "full-images"
 CROPPED_CONTAINER = "cropped-details"
 
+def is_relevant_image(tags):
+    keywords = ["car", "auto", "automotive"]
+    return any(keyword in tags.lower() for keyword in keywords)
+
+
 def fetch_and_crop_car_image():
     base_terms = [
         "audi", "bmw", "mercedes", "volkswagen", "toyota", "honda", "ford", "chevrolet",
@@ -43,6 +48,7 @@ def fetch_and_crop_car_image():
         )
         data = response.json()
         hits = data.get("hits", [])
+        hits = [hit for hit in hits if is_relevant_image(hit.get("tags", ""))]
         if hits:
             break  # saatiin osumia
 
