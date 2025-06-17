@@ -5,6 +5,7 @@ import os
 import json
 from azure.storage.blob import BlobServiceClient
 import uuid
+import random
 
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY", "YOUR_PIXABAY_API_KEY")
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "YOUR_AZURE_STORAGE_CONNECTION_STRING")
@@ -15,7 +16,12 @@ def fetch_and_crop_car_image():
     # Fetch image from Pixabay
     response = requests.get(f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q=car&image_type=photo&per_page=3")
     data = response.json()
-    image_url = data["hits"][0]["largeImageURL"]
+    hits = data.get("hits", [])
+    if not hits:
+        return json.dumps({"error": "No images found"})
+    
+    selected = random.choice(hits) 
+    image_url = selected["largeImageURL"]
 
     image_response = requests.get(image_url)
     image = Image.open(BytesIO(image_response.content))
