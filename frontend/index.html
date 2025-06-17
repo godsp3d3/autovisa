@@ -1,82 +1,128 @@
 <!DOCTYPE html>
 <html lang="fi">
 <head>
-  <meta charset="UTF-8">
-  <title>Autovisa</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px 40px; /* <-- Sivun reunoille väliä */
-      background-color: #f2f2f2;
-    }
+    <meta charset="UTF-8">
+    <title>Autovisa</title>
+    <style>
+        .quiz-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            margin-top: 20px;
+        }
 
-    .image-container {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 20px;
-      margin-top: 20px;
-    }
+        .image-box {
+            flex: 1;
+        }
 
-    .image-box {
-      background: #fff;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      flex: 1;
-      max-width: 48%;
-    }
+        .image-box img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ccc;
+        }
 
-    .image-box img {
-      max-width: 100%;
-      height: auto;
-      display: block;
-    }
-
-    .button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin-top: 20px;
-      cursor: pointer;
-    }
-
-  </style>
+        .controls {
+            margin-top: 15px;
+        }
+    </style>
 </head>
 <body>
-  <h1>Autovisa</h1>
+    <h1>Autovisa</h1>
 
-  <div class="image-container">
-    <div class="image-box">
-      <h3>Rajattu kuva</h3>
-      <img id="cropped-image" src="" alt="Rajattu auto">
+    <label for="count">Kuinka monta autoa haluat tunnistaa?</label>
+    <input type="number" id="count" min="1" max="50" value="5">
+    <button onclick="startQuiz()">Aloita visa</button>
+    <button onclick="resetAndStart()">Aloita uusi visa</button>
+    <hr>
+
+    <div id="quiz" style="display:none;">
+        <p><strong>Kuva <span id="currentIndex">1</span> / <span id="totalCount">?</span></strong></p>
+
+        <div class="quiz-container">
+            <div class="image-box">
+                <img id="cropped" src="" alt="Rajattu kuva">
+            </div>
+            <div class="image-box">
+                <img id="full" src="" alt="Koko kuva" style="display:none;">
+            </div>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="guess" placeholder="Arvauksesi">
+            <br><br>
+            <button onclick="reveal()">Näytä koko kuva</button>
+            <button onclick="nextImage()">Seuraava kuva</button>
+        </div>
     </div>
-    <div class="image-box">
-      <h3>Kokokuva</h3>
-      <img id="full-image" src="" alt="Koko auto">
-    </div>
-  </div>
 
-  <button class="button" onclick="startNewQuiz()">Aloita uusi visa</button>
+    <script>
+        let imageList = [];
+        let current = 0;
 
-  <script>
-    async function startNewQuiz() {
-      try {
-        const reset = await fetch("/api/resetQuiz", { method: "POST" });
-        if (!reset.ok) throw new Error("Reset epäonnistui");
+        async function startQuiz() {
+            const count = parseInt(document.getElementById("count").value);
+            if (isNaN(count) || count <= 0) {
+                alert("Anna kelvollinen määrä kuvia.");
+                return;
+            }
 
-        const res = await fetch("/api/fetchCarImages", { method: "POST" });
-        const data = await res.json();
+            imageList = [];
+            current = 0;
+            document.getElementById("quiz").style.display = "none";
+            document.getElementById("cropped").src = "";
+            document.getElementById("full").src = "";
 
-        document.getElementById("cropped-image").src = data.cropped_image_url;
-        document.getElementById("full-image").src = data.full_image_url;
-      } catch (err) {
-        alert("Virhe: " + err.message);
-      }
-    }
+            for (let i = 0; i < count; i++) {
+                try {
+                    const response = await fetch("/api/fetchCarImages");
+                    const data = await response.json();
+                    imageList.push(data);
+                } catch (e) {
+                    alert("Kuvan haku epäonnistui: " + e.message);
+                    return;
+                }
+            }
 
-    // Käynnistä automaattisesti ensimmäinen visa
-    startNewQuiz();
-  </script>
+            document.getElementById("totalCount").textContent = imageList.length;
+            document.getElementById("quiz").style.display = "block";
+            showImage();
+        }
+
+        async function resetAndStart() {
+            try {
+                const response = await fetch("/api/resetQuizImages", { method: "POST" });
+                if (response.ok) {
+                    startQuiz();
+                } else {
+                    alert("Virhe tyhjentäessä kuvia.");
+                }
+            } catch (e) {
+                alert("Yhteysvirhe: " + e.message);
+            }
+        }
+
+        function showImage() {
+            const data = imageList[current];
+            document.getElementById("currentIndex").textContent = current + 1;
+            document.getElementById("cropped").src = data.cropped_image_url + "?t=" + Date.now();
+            document.getElementById("full").src = data.full_image_url + "?t=" + Date.now();
+            document.getElementById("full").style.display = "none";
+            document.getElementById("guess").value = "";
+        }
+
+        function reveal() {
+            document.getElementById("full").style.display = "block";
+        }
+
+        function nextImage() {
+            if (current < imageList.length - 1) {
+                current++;
+                showImage();
+            } else {
+                alert("Autovisa on suoritettu!");
+                document.getElementById("quiz").style.display = "none";
+            }
+        }
+    </script>
 </body>
 </html>
