@@ -40,6 +40,8 @@
     <button onclick="resetAndStart()">Aloita alusta</button>
     <hr>
 
+    <p id="loader" style="display:none;">Odota hetki, kuvia ladataan...</p>
+
     <div id="quiz" style="display:none;">
         <p><strong>Kuva <span id="currentIndex">1</span> / <span id="totalCount">?</span></strong></p>
 
@@ -69,6 +71,8 @@
                 return;
             }
 
+            document.getElementById("loader").style.display = "block";  // Näytä latausteksti 
+
             imageList = [];
             current = 0;
             document.getElementById("quiz").style.display = "none";
@@ -82,12 +86,14 @@
                     imageList.push(data);
                 } catch (e) {
                     alert("Kuvan haku epäonnistui: " + e.message);
+                    document.getElementById("loader").style.display = "none"; // Piilota myös virhetilanteessa
                     return;
                 }
             }
 
             document.getElementById("totalCount").textContent = imageList.length;
             document.getElementById("quiz").style.display = "block";
+            document.getElementById("loader").style.display = "none";  // Piilota kun valmis
             showImage();
         }
 
