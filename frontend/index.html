@@ -7,6 +7,8 @@
 <body>
     <h1>Arvaa auton merkki tai malli</h1>
 
+    <button onclick="loadImage()">Uusi kuva</button><br><br>
+
     <img id="cropped" src="" alt="Rajattu kuva" width="300"><br><br>
 
     <input type="text" id="guess" placeholder="Arvauksesi"><br><br>
@@ -22,6 +24,7 @@
                 const data = await response.json();
                 document.getElementById("cropped").src = data.cropped_image_url;
                 document.getElementById("full").src = data.full_image_url;
+                document.getElementById("full").style.display = "none"; // piilota täysi kuva
             } catch (error) {
                 alert("Kuvien lataus epäonnistui: " + error.message);
             }
