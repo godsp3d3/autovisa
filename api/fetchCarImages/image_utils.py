@@ -14,16 +14,7 @@ CROPPED_CONTAINER = "cropped-details"
 
 def fetch_and_crop_car_image():
     base_terms = [
-        "audi", "bmw", "mercedes", "volkswagen", "toyota", "honda", "ford", "chevrolet",
-        "nissan", "hyundai", "kia", "mazda", "subaru", "volvo", "peugeot", "renault",
-        "citroen", "fiat", "jeep", "dodge", "ram", "gmc", "cadillac", "chrysler",
-        "buick", "lincoln", "tesla", "porsche", "ferrari", "lamborghini", "maserati",
-        "alfa romeo", "aston martin", "bentley", "rolls royce", "lotus", "jaguar",
-        "land rover", "mini", "seat", "skoda", "suzuki", "saab", "opel", "smart",
-        "acura", "infiniti", "lexus", "genesis", "daewoo", "dacia", "hummer",
-        "isuzu", "mg", "polestar", "proton", "scion", "ssangyong", "tata", "uaz",
-        "zastava", "byd", "nio", "chery", "geely", "great wall", "lancia", "lucid",
-        "rivian", "vinfast"
+        "ford"
     ]
 
     variants = [
