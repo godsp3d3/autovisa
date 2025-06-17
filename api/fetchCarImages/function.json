@@ -1,12 +1,12 @@
 {
-  "scriptFile": "__init__.py",
   "bindings": [
     {
-      "authLevel": "function",
+      "authLevel": "anonymous",
       "type": "httpTrigger",
       "direction": "in",
       "name": "req",
-      "methods": ["get", "post"]
+      "methods": ["get", "post"],
+      "route": "fetchCarImages"
     },
     {
       "type": "http",
@@ -15,3 +15,4 @@
     }
   ]
 }
+
