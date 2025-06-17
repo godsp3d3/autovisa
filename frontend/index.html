@@ -22,6 +22,7 @@
                 const response = await fetch("/api/fetchCarImages");
                 if (!response.ok) throw new Error("Virhe haettaessa kuvaa.");
                 const data = await response.json();
+                const timestamp = new Date().getTime(); 
                 document.getElementById("cropped").src = data.cropped_image_url;
                 document.getElementById("full").src = data.full_image_url;
                 document.getElementById("full").style.display = "none"; // piilota täysi kuva
