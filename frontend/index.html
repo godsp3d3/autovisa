@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Autovisa</title>
+</head>
+<body>
+    <h1>Arvaa auton merkki tai malli</h1>
+    <img id="cropped" src="" alt="Rajattu kuva" width="300"><br><br>
+    <input type="text" id="guess" placeholder="Arvauksesi"><br><br>
+    <button onclick="reveal()">Näytä koko kuva</button><br><br>
+    <img id="full" src="" alt="Koko kuva" style="display:none;" width="500">
+
+    <script>
+        async function loadImage() {
+            const response = await fetch("/api/fetchCarImage");
+            const data = await response.json();
+            document.getElementById("cropped").src = data.cropped_image_url;
+            document.getElementById("full").src = data.full_image_url;
+        }
+
+        function reveal() {
+            document.getElementById("full").style.display = "block";
+        }
+
+        loadImage();
+    </script>
+</body>
+</html>
