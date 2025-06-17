@@ -1,6 +1,6 @@
 import logging
 import azure.functions as func
-from shared.image_utils import fetch_and_crop_car_image
+from .image_utils import fetch_and_crop_car_image
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Processing request to fetch and crop car image.")
