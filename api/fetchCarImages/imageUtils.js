@@ -1,7 +1,7 @@
 "use strict";
 
 const axios = require("axios");
-const sharp = require("sharp");
+const Jimp = require("jimp");
 const { BlobServiceClient } = require("@azure/storage-blob");
 const { randomUUID } = require("crypto");
 
@@ -11,7 +11,7 @@ const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STR
 const FULL_CONTAINER = process.env.FULL_CONTAINER || "full-images";
 const CROPPED_CONTAINER = process.env.CROPPED_CONTAINER || "cropped-details";
 
-const VISION_ENDPOINT = process.env.AZURE_VISION_ENDPOINT || ""; // e.g. https://myresource.cognitiveservices.azure.com
+const VISION_ENDPOINT = process.env.AZURE_VISION_ENDPOINT || "";
 const VISION_API_KEY = process.env.AZURE_VISION_API_KEY || "";
 
 const MIN_CAR_AREA_RATIO = parseFloat(process.env.MIN_CAR_AREA_RATIO || "0.18");
@@ -21,7 +21,8 @@ const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT || "20") * 1000;
 const CROP_PADDING = parseFloat(process.env.CROP_PADDING || "0.12");
 
 const CAR_TAGS = new Set(["car", "truck", "bus", "motorcycle", "vehicle", "automobile", "auto"]);
-const REJECT_IF_PERSON_DOMINATES = (process.env.REJECT_IF_DOMINATED_BY_PERSON || "true").toLowerCase() === "true";
+const REJECT_IF_PERSON_DOMINATES =
+  (process.env.REJECT_IF_DOMINATED_BY_PERSON || "true").toLowerCase() === "true";
 
 const BRANDS = [
   "audi", "bmw", "mercedes", "volkswagen", "toyota", "honda", "ford", "chevrolet",
@@ -97,17 +98,12 @@ async function findCandidateImage(attempt) {
   return { imageUrl: selected.largeImageURL, brand };
 }
 
-// ---------- Azure AI Vision — Analyze v4.0 ----------
+// ---------- Azure AI Vision ----------
 
-/**
- * Calls the Azure AI Vision 4.0 "Analyze" endpoint with the "Objects" visual feature.
- * Returns an array of detected objects, each with:
- *   { tag: string, confidence: number, boundingBox: { x, y, w, h } }
- * Coordinates are in pixels relative to the image dimensions.
- */
 async function detectObjectsWithVision(imageUrl, imageWidth, imageHeight) {
-  // Vision 4.0 florence endpoint
-  const apiUrl = `${VISION_ENDPOINT.replace(/\/$/, "")}/computervision/imageanalysis:analyze?api-version=2024-02-01&features=objects`;
+  const apiUrl =
+    `${VISION_ENDPOINT.replace(/\/$/, "")}/computervision/imageanalysis:analyze` +
+    `?api-version=2024-02-01&features=objects`;
 
   const response = await axios.post(
     apiUrl,
@@ -133,10 +129,7 @@ async function detectObjectsWithVision(imageUrl, imageWidth, imageHeight) {
   });
 }
 
-/**
- * Picks the best car-class object. Returns null if no acceptable vehicle found.
- */
-function selectBestVehicle(detectedObjects, imageWidth, imageHeight) {
+function selectBestVehicle(detectedObjects) {
   let bestCar = null;
   let largestPersonRatio = 0;
 
@@ -165,27 +158,22 @@ function selectBestVehicle(detectedObjects, imageWidth, imageHeight) {
   return bestCar;
 }
 
-// ---------- Image crop & upload via sharp ----------
+// ---------- Image crop & upload with jimp ----------
 
-/**
- * Downloads image bytes, crops to the vehicle bounding box (with padding),
- * uploads both full and cropped versions to Blob Storage.
- * Returns { fullUrl, croppedUrl }.
- */
 async function cropAndUpload(imageUrl, vehicle, blobServiceClient) {
-  // Download image as buffer
+  // Download image buffer
   const imgResponse = await axios.get(imageUrl, {
     responseType: "arraybuffer",
     timeout: REQUEST_TIMEOUT_MS,
   });
   const imageBuffer = Buffer.from(imgResponse.data);
 
-  // Get actual image dimensions from the buffer
-  const meta = await sharp(imageBuffer).metadata();
-  const imgW = meta.width;
-  const imgH = meta.height;
+  // Read with jimp (pure JS, no native deps)
+  const image = await Jimp.read(imageBuffer);
+  const imgW = image.bitmap.width;
+  const imgH = image.bitmap.height;
 
-  // Build crop box from bounding box + padding
+  // Build crop box with padding inset
   const { x, y, w, h } = vehicle.boundingBox;
   const padX = Math.round(w * CROP_PADDING);
   const padY = Math.round(h * CROP_PADDING);
@@ -198,19 +186,18 @@ async function cropAndUpload(imageUrl, vehicle, blobServiceClient) {
   const cropWidth = Math.max(120, cropRight - cropLeft);
   const cropHeight = Math.max(120, cropBottom - cropTop);
 
-  // Crop with sharp
-  const croppedBuffer = await sharp(imageBuffer)
-    .extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight })
-    .jpeg({ quality: 92 })
-    .toBuffer();
+  // Crop
+  const croppedImage = image.clone().crop(cropLeft, cropTop, cropWidth, cropHeight);
 
-  const fullJpeg = await sharp(imageBuffer).jpeg({ quality: 92 }).toBuffer();
+  // Encode both to JPEG buffers
+  const fullBuffer = await image.getBufferAsync(Jimp.MIME_JPEG);
+  const croppedBuffer = await croppedImage.quality(92).getBufferAsync(Jimp.MIME_JPEG);
 
-  // Upload both
-  const fullUrl = await uploadBuffer(blobServiceClient, fullJpeg, FULL_CONTAINER, "full");
+  // Upload
+  const fullUrl = await uploadBuffer(blobServiceClient, fullBuffer, FULL_CONTAINER, "full");
   const croppedUrl = await uploadBuffer(blobServiceClient, croppedBuffer, CROPPED_CONTAINER, "crop");
 
-  return { fullUrl, croppedUrl };
+  return { fullUrl, croppedUrl, imgW, imgH };
 }
 
 async function uploadBuffer(blobServiceClient, buffer, containerName, suffix) {
@@ -222,47 +209,50 @@ async function uploadBuffer(blobServiceClient, buffer, containerName, suffix) {
   return blobClient.url;
 }
 
-// ---------- Main exported function ----------
+// ---------- Main ----------
 
 async function fetchAndCropCarImage() {
   ensureConfiguration();
   const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
 
   for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+    // 1. Find a candidate image URL from Pixabay
     const candidate = await findCandidateImage(attempt);
     if (!candidate) continue;
 
-    // We need image dimensions before calling Vision — get them with a HEAD/tiny fetch via sharp
-    let imageWidth, imageHeight;
+    // 2. Download image to get dimensions (needed for Vision area ratio)
+    let imageBuffer, imgW, imgH;
     try {
-      const headBytes = await axios.get(candidate.imageUrl, {
+      const imgResponse = await axios.get(candidate.imageUrl, {
         responseType: "arraybuffer",
         timeout: REQUEST_TIMEOUT_MS,
       });
-      const meta = await sharp(Buffer.from(headBytes.data)).metadata();
-      imageWidth = meta.width;
-      imageHeight = meta.height;
+      imageBuffer = Buffer.from(imgResponse.data);
+      const jimpImg = await Jimp.read(imageBuffer);
+      imgW = jimpImg.bitmap.width;
+      imgH = jimpImg.bitmap.height;
     } catch (e) {
-      console.log(`Attempt ${attempt}: failed to fetch image metadata — ${e.message}`);
+      console.log(`Attempt ${attempt}: image download failed — ${e.message}`);
       continue;
     }
 
-    // Detect objects with Azure AI Vision
+    // 3. Detect objects with Azure AI Vision
     let detectedObjects;
     try {
-      detectedObjects = await detectObjectsWithVision(candidate.imageUrl, imageWidth, imageHeight);
+      detectedObjects = await detectObjectsWithVision(candidate.imageUrl, imgW, imgH);
     } catch (e) {
       console.log(`Attempt ${attempt}: Vision API error — ${e.message}`);
       continue;
     }
 
-    const vehicle = selectBestVehicle(detectedObjects, imageWidth, imageHeight);
+    // 4. Select best vehicle
+    const vehicle = selectBestVehicle(detectedObjects);
     if (!vehicle) {
       console.log(`Attempt ${attempt}: no acceptable vehicle detected`);
       continue;
     }
 
-    // Crop & upload
+    // 5. Crop & upload
     const { fullUrl, croppedUrl } = await cropAndUpload(
       candidate.imageUrl,
       vehicle,

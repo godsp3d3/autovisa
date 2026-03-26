@@ -21,3 +21,4 @@ jobs:
           app_location: "./frontend"
           api_location: "api"
           output_location: ""
+          config_file_location: "/"

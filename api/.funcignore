@@ -1,0 +1,9 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+.python_packages
+local.settings.json
+*.suo
+*.user
