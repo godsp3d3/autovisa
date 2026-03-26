@@ -1,4 +1,6 @@
 azure-functions
 azure-storage-blob
-pillow
+Pillow
 requests
+ultralytics
+opencv-python-headless

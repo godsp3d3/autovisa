@@ -1,0 +1,20 @@
+PIXABAY_API_KEY
+25847901-62649e7ddebbf0c8586b48e7b
+AZURE_STORAGE_CONNECTION_STRING
+DefaultEndpointsProtocol=https;AccountName=autovisa;AccountKey=SMBmwO/BCf0iInnCSrwLc8H78E60mGeQzAiydSyb6gMoYw3QaGXoEVCJFliCLs1c7QDMZHX184Ky+AStvRYbRg==;EndpointSuffix=core.windows.net
+
+git remote add origin https://github.com/godsp3d3/autovisa-azure-app.git
+
+
+https://zealous-sea-019dedc03.6.azurestaticapps.net
+
+
+Summarize content of webpage https://blogs.microsoft.com/blog/2025/06/16/announcing-comprehensive-sovereign-solutions-empowering-european-organizations/. Give me summary in English and translate it to Finnish also. Finnish summary should be 2500-2900 characters long, so it fits to LinkedIn post. Format the text as if you had written it yourself for personal blog, so no mentions to original source in summary. No hurry, take your time to create astonishing summary.
+
+Voitko luoda LinkedIn-postauksen seuraavan verkkosivun sisällöstä https://blogs.microsoft.com/blog/2025/06/16/announcing-comprehensive-sovereign-solutions-empowering-european-organizations/ Tekstin tulee olla suomeksi ja sen tulisi olla maksimissaan 2900 merkkiä pitkä, jotta se sopii hyvin LinkedIn postaukseen. Muotoile teksti ikään kuin olisit kirjoittanut sen itse henkilökohtaiseen blogikirjoitukseen, äläkä mainitse alkuperäistä lähdettä. Ei kiirettä, käytä aikaa luodaksesi upean tekstin.
+Tekstissä tulisi ilmetä henkilökohtainen ja elävä sävy. Säilytä asiapitoisuus, mutta lisää mukaan omaa pohdintaa ja käytännönläheisiä huomioita, jotta tekstiin olisi helpompi samaistua ja mukavampi lukea.
+
+
+curl -X POST https://zealous-sea-019dedc03.6.azurestaticapps.net/api/resetQuizImages -v
+
+curl "https://pixabay.com/api/?key=25847901-62649e7ddebbf0c8586b48e7b&q=ford&image_type=photo&orientation=horizontal&editors_choice=true&safesearch=true&per_page=5"
