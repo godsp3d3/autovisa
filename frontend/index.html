@@ -61,76 +61,96 @@
     </div>
 
     <script>
-        let imageList = [];
-        let current = 0;
+    let imageList = [];
+    let current = 0;
 
-        async function startQuiz() {
-            const count = parseInt(document.getElementById("count").value);
-            if (isNaN(count) || count <= 0) {
-                alert("Anna kelvollinen määrä kuvia (1-50).");
-                return;
-            }
-
-            document.getElementById("loader").style.display = "block";  // Näytä latausteksti 
-
-            imageList = [];
-            current = 0;
-            document.getElementById("quiz").style.display = "none";
-            document.getElementById("cropped").src = "";
-            document.getElementById("full").src = "";
-
-            for (let i = 0; i < count; i++) {
-                try {
-                    const response = await fetch("/api/fetchCarImages");
-                    const data = await response.json();
-                    imageList.push(data);
-                } catch (e) {
-                    alert("Kuvan haku epäonnistui: " + e.message);
-                    document.getElementById("loader").style.display = "none"; // Piilota myös virhetilanteessa
-                    return;
-                }
-            }
-
-            document.getElementById("totalCount").textContent = imageList.length;
-            document.getElementById("quiz").style.display = "block";
-            document.getElementById("loader").style.display = "none";  // Piilota kun valmis
-            showImage();
+    async function startQuiz() {
+        const count = parseInt(document.getElementById("count").value);
+        if (isNaN(count) || count <= 0) {
+            alert("Anna kelvollinen määrä kuvia (1-50).");
+            return;
         }
 
-        async function resetAndStart() {
+        document.getElementById("loader").style.display = "block";
+
+        imageList = [];
+        current = 0;
+        document.getElementById("quiz").style.display = "none";
+        document.getElementById("cropped").src = "";
+        document.getElementById("full").src = "";
+
+        for (let i = 0; i < count; i++) {
             try {
-                const response = await fetch("/api/resetQuiz", { method: "POST" });
-                if (response.ok) {
-                    startQuiz();
-                } else {
-                    alert("Virhe tyhjentäessä kuvia.");
+                const response = await fetch("/api/fetchCarImages");
+                const data = await response.json();
+
+                if (!response.ok) {
+                    console.error("API error:", data);
+                    continue;
                 }
+
+                if (!data.cropped_image_url || !data.full_image_url) {
+                    console.error("Invalid image payload:", data);
+                    continue;
+                }
+
+                imageList.push(data);
             } catch (e) {
-                alert("Yhteysvirhe: " + e.message);
+                console.error("Kuvan haku epäonnistui:", e);
             }
         }
 
-        function showImage() {
-            const data = imageList[current];
-            document.getElementById("currentIndex").textContent = current + 1;
-            document.getElementById("cropped").src = data.cropped_image_url + "?t=" + Date.now();
-            document.getElementById("full").src = data.full_image_url + "?t=" + Date.now();
-            document.getElementById("full").style.display = "none";
+        document.getElementById("loader").style.display = "none";
+
+        if (imageList.length === 0) {
+            alert("Yhtään kelvollista autokuvaa ei saatu ladattua.");
+            return;
         }
 
-        function reveal() {
-            document.getElementById("full").style.display = "block";
-        }
+        document.getElementById("totalCount").textContent = imageList.length;
+        document.getElementById("quiz").style.display = "block";
+        showImage();
+    }
 
-        function nextImage() {
-            if (current < imageList.length - 1) {
-                current++;
-                showImage();
+    async function resetAndStart() {
+        try {
+            const response = await fetch("/api/resetQuiz", { method: "POST" });
+            if (response.ok) {
+                startQuiz();
             } else {
-                alert("Autovisa on suoritettu!");
-                document.getElementById("quiz").style.display = "none";
+                alert("Virhe tyhjentäessä kuvia.");
             }
+        } catch (e) {
+            alert("Yhteysvirhe: " + e.message);
         }
-    </script>
+    }
+
+    function showImage() {
+        const data = imageList[current];
+        if (!data || !data.cropped_image_url || !data.full_image_url) {
+            alert("Kuvan tiedot puuttuvat.");
+            return;
+        }
+
+        document.getElementById("currentIndex").textContent = current + 1;
+        document.getElementById("cropped").src = data.cropped_image_url + "?t=" + Date.now();
+        document.getElementById("full").src = data.full_image_url + "?t=" + Date.now();
+        document.getElementById("full").style.display = "none";
+    }
+
+    function reveal() {
+        document.getElementById("full").style.display = "block";
+    }
+
+    function nextImage() {
+        if (current < imageList.length - 1) {
+            current++;
+            showImage();
+        } else {
+            alert("Autovisa on suoritettu!");
+            document.getElementById("quiz").style.display = "none";
+        }
+    }
+</script>
 </body>
 </html>
