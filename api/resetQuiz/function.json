@@ -1,19 +1,17 @@
 {
-  "scriptFile": "__init__.py",
   "bindings": [
     {
       "authLevel": "anonymous",
       "type": "httpTrigger",
       "direction": "in",
-      "methods": ["post"],
       "name": "req",
+      "methods": ["post"],
       "route": "resetQuiz"
     },
     {
       "type": "http",
       "direction": "out",
-      "name": "$return"
+      "name": "res"
     }
   ]
 }
-

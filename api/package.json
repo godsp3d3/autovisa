@@ -1,0 +1,17 @@
+{
+  "name": "autovisa-api",
+  "version": "1.0.0",
+  "description": "Autovisa Azure Functions API",
+  "main": "index.js",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/storage-blob": "^12.17.0",
+    "axios": "^1.6.0",
+    "sharp": "^0.33.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
