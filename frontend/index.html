@@ -142,18 +142,13 @@
         showImage();
     }
 
-    async function resetAndStart() {
-        try {
-            const response = await fetch("/api/resetQuiz", { method: "POST" });
-
-            if (response.ok) {
-                startQuiz();
-            } else {
-                alert("Virhe tyhjentäessä kuvia.");
-            }
-        } catch (e) {
-            alert("Yhteysvirhe: " + e.message);
-        }
+    function resetAndStart() {
+        imageList = [];
+        current = 0;
+        document.getElementById("quiz").style.display = "none";
+        document.getElementById("cropped").src = "";
+        document.getElementById("full").src = "";
+        startQuiz();
     }
 
     function showImage() {
