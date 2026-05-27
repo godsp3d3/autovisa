@@ -75,11 +75,19 @@
 
         imageList = [];
         current = 0;
+
+        const seenPixabayIds = new Set();
+
         document.getElementById("quiz").style.display = "none";
         document.getElementById("cropped").src = "";
         document.getElementById("full").src = "";
 
-        for (let i = 0; i < count; i++) {
+        // Fetch extra attempts because duplicates and failed images are filtered out.
+        const maxFetches = count * 3;
+
+        for (let i = 0; i < maxFetches; i++) {
+            if (imageList.length >= count) break;
+
             try {
                 const response = await fetch("/api/fetchCarImages");
                 const data = await response.json();
@@ -94,7 +102,14 @@
                     continue;
                 }
 
+                if (seenPixabayIds.has(data.pixabay_id)) {
+                    console.log("Duplicate Pixabay image skipped:", data.pixabay_id);
+                    continue;
+                }
+
+                seenPixabayIds.add(data.pixabay_id);
                 imageList.push(data);
+
             } catch (e) {
                 console.error("Kuvan haku epäonnistui:", e);
             }
@@ -127,6 +142,7 @@
 
     function showImage() {
         const data = imageList[current];
+
         if (!data || !data.cropped_image_url || !data.full_image_url) {
             alert("Kuvan tiedot puuttuvat.");
             return;
