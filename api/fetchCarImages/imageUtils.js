@@ -8,12 +8,13 @@ const { randomUUID } = require("crypto");
 const FULL_CONTAINER = "full-images";
 const CROPPED_CONTAINER = "cropped-details";
 
-const MAX_FETCH_ATTEMPTS = 16;
+const MAX_FETCH_ATTEMPTS = 24;
 const OCR_POLL_ATTEMPTS = 12;
 const OCR_POLL_DELAY_MS = 650;
 const TEXT_BLUR_RADIUS = 12;
 const PIXABAY_PER_PAGE = 50;
-const PIXABAY_MAX_PAGE = 10;
+const PIXABAY_MAX_PAGE = 20;
+const PIXABAY_PAGES_PER_REQUEST = 3;
 
 const VEHICLE_WORDS = [
   "car",
@@ -40,6 +41,10 @@ function sleep(ms) {
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function normalizeId(id) {
+  return id === undefined || id === null ? "" : String(id).trim();
 }
 
 async function uploadBuffer(blobServiceClient, buffer, containerName, prefix) {
@@ -69,7 +74,6 @@ function isVehicleName(name) {
 async function analyzeImageWithVision(imageBuffer) {
   const endpoint = normalizeEndpoint(process.env.AZURE_VISION_ENDPOINT);
   const key = process.env.AZURE_VISION_API_KEY;
-
   const url = `${endpoint}/vision/v3.2/analyze?visualFeatures=Objects,Tags&language=en`;
 
   const response = await axios.post(url, imageBuffer, {
@@ -247,9 +251,7 @@ function centerCrop(image) {
   return image.clone().crop(x, y, size, size).resize(700, 700);
 }
 
-async function fetchPixabayCandidates() {
-  const page = randomInt(1, PIXABAY_MAX_PAGE);
-
+async function fetchPixabayPage(page) {
   const response = await axios.get("https://pixabay.com/api/", {
     params: {
       key: process.env.PIXABAY_API_KEY,
@@ -269,6 +271,37 @@ async function fetchPixabayCandidates() {
   }
 
   return response.data.hits;
+}
+
+async function fetchPixabayCandidates(excludeSet) {
+  const pages = new Set();
+
+  while (pages.size < PIXABAY_PAGES_PER_REQUEST) {
+    pages.add(randomInt(1, PIXABAY_MAX_PAGE));
+  }
+
+  const results = await Promise.allSettled(
+    Array.from(pages).map(page => fetchPixabayPage(page))
+  );
+
+  const seen = new Set();
+  const candidates = [];
+
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+
+    for (const hit of result.value) {
+      const id = normalizeId(hit.id);
+      if (!id) continue;
+      if (excludeSet.has(id)) continue;
+      if (seen.has(id)) continue;
+
+      seen.add(id);
+      candidates.push(hit);
+    }
+  }
+
+  return candidates.sort(() => Math.random() - 0.5);
 }
 
 async function downloadImage(url) {
@@ -303,7 +336,9 @@ async function applyOcrBlurToCroppedImage(croppedImage) {
   };
 }
 
-async function fetchAndCropCarImage() {
+async function fetchAndCropCarImage(options = {}) {
+  const excludeSet = new Set((options.excludeIds || []).map(normalizeId).filter(Boolean));
+
   const required = [
     "PIXABAY_API_KEY",
     "AZURE_STORAGE_CONNECTION_STRING",
@@ -320,20 +355,20 @@ async function fetchAndCropCarImage() {
     process.env.AZURE_STORAGE_CONNECTION_STRING
   );
 
-  const candidates = await fetchPixabayCandidates();
+  const candidates = await fetchPixabayCandidates(excludeSet);
 
   if (candidates.length === 0) {
-    throw new Error("No Pixabay images found.");
+    throw new Error("No new Pixabay images found after duplicate filtering.");
   }
 
-  const shuffled = candidates.sort(() => Math.random() - 0.5);
-  const attempts = Math.min(MAX_FETCH_ATTEMPTS, shuffled.length);
+  const attempts = Math.min(MAX_FETCH_ATTEMPTS, candidates.length);
 
   for (let i = 0; i < attempts; i++) {
-    const candidate = shuffled[i];
+    const candidate = candidates[i];
+    const pixabayId = normalizeId(candidate.id);
     const sourceUrl = candidate.largeImageURL || candidate.webformatURL;
 
-    if (!sourceUrl) continue;
+    if (!sourceUrl || !pixabayId || excludeSet.has(pixabayId)) continue;
 
     try {
       const originalBuffer = await downloadImage(sourceUrl);
@@ -349,7 +384,6 @@ async function fetchAndCropCarImage() {
 
       if (!bestVehicle && !hasVehicleTag) continue;
 
-      // Full image is intentionally not blurred in v3. Only the quiz/cropped image is sanitized.
       const fullBuffer = await image.clone().quality(88).getBufferAsync(Jimp.MIME_JPEG);
 
       const rawCroppedImage = bestVehicle
@@ -380,12 +414,14 @@ async function fetchAndCropCarImage() {
         cropped_image_url: croppedImageUrl,
         full_image_url: fullImageUrl,
         source_image_url: sourceUrl,
-        pixabay_id: candidate.id,
+        pixabay_id: pixabayId,
         tags: candidate.tags || "",
         detected_object: bestVehicle ? bestVehicle.object : null,
         ocr_blur_regions: blurredCrop.regions.length,
         attempts_used: i + 1,
-        autovisa_version: "v3-cropped-ocr-blur"
+        excluded_count: excludeSet.size,
+        candidate_count: candidates.length,
+        autovisa_version: "v3-cropped-ocr-blur-exclude"
       };
     } catch (err) {
       console.log("Skipping image candidate:", err.message);
@@ -394,8 +430,10 @@ async function fetchAndCropCarImage() {
   }
 
   return {
-    error: "No suitable car image found after validation.",
-    attempts
+    error: "No suitable new car image found after validation.",
+    attempts,
+    excluded_count: excludeSet.size,
+    candidate_count: candidates.length
   };
 }
 
