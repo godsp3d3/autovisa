@@ -2,11 +2,25 @@
 
 const { fetchAndCropCarImage } = require("./imageUtils");
 
+function parseExcludeIds(req) {
+  const raw = req.query && req.query.excludeIds ? String(req.query.excludeIds) : "";
+
+  if (!raw.trim()) {
+    return [];
+  }
+
+  return raw
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
 module.exports = async function (context, req) {
   context.log("Processing request to fetch and validate car image.");
 
   try {
-    const result = await fetchAndCropCarImage();
+    const excludeIds = parseExcludeIds(req);
+    const result = await fetchAndCropCarImage({ excludeIds });
 
     if (!result || result.error || !result.cropped_image_url || !result.full_image_url) {
       context.res = {
