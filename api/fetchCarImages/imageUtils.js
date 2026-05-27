@@ -9,6 +9,9 @@ const FULL_CONTAINER = "full-images";
 const CROPPED_CONTAINER = "cropped-details";
 
 const MAX_FETCH_ATTEMPTS = 12;
+const OCR_POLL_ATTEMPTS = 12;
+const OCR_POLL_DELAY_MS = 650;
+const TEXT_BLUR_RADIUS = 12;
 
 const VEHICLE_WORDS = [
   "car",
@@ -27,6 +30,10 @@ const VEHICLE_WORDS = [
 
 function normalizeEndpoint(endpoint) {
   return endpoint.replace(/\/+$/, "");
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function uploadBuffer(blobServiceClient, buffer, containerName, prefix) {
@@ -74,6 +81,50 @@ async function analyzeImageWithVision(imageBuffer) {
   return response.data;
 }
 
+async function readTextWithVision(imageBuffer) {
+  const endpoint = normalizeEndpoint(process.env.AZURE_VISION_ENDPOINT);
+  const key = process.env.AZURE_VISION_API_KEY;
+
+  const analyzeUrl = `${endpoint}/vision/v3.2/read/analyze?language=en`;
+
+  const submitResponse = await axios.post(analyzeUrl, imageBuffer, {
+    headers: {
+      "Ocp-Apim-Subscription-Key": key,
+      "Content-Type": "application/octet-stream"
+    },
+    timeout: 20000,
+    validateStatus: status => status >= 200 && status < 300
+  });
+
+  const operationLocation = submitResponse.headers["operation-location"];
+  if (!operationLocation) {
+    throw new Error("Azure Vision OCR did not return Operation-Location.");
+  }
+
+  for (let i = 0; i < OCR_POLL_ATTEMPTS; i++) {
+    await sleep(OCR_POLL_DELAY_MS);
+
+    const resultResponse = await axios.get(operationLocation, {
+      headers: {
+        "Ocp-Apim-Subscription-Key": key
+      },
+      timeout: 20000
+    });
+
+    const status = resultResponse.data.status;
+
+    if (status === "succeeded") {
+      return resultResponse.data.analyzeResult || {};
+    }
+
+    if (status === "failed") {
+      throw new Error("Azure Vision OCR failed.");
+    }
+  }
+
+  throw new Error("Azure Vision OCR timed out.");
+}
+
 function findBestVehicleObject(visionResult, imageWidth, imageHeight) {
   const objects = visionResult.objects || [];
 
@@ -107,6 +158,67 @@ function tagsContainVehicle(visionResult) {
     const confidence = tag.confidence || 0;
     return confidence >= 0.55 && isVehicleName(name);
   });
+}
+
+function boundingBoxToRect(boundingBox, imageWidth, imageHeight) {
+  if (!Array.isArray(boundingBox) || boundingBox.length < 8) return null;
+
+  const xs = [boundingBox[0], boundingBox[2], boundingBox[4], boundingBox[6]];
+  const ys = [boundingBox[1], boundingBox[3], boundingBox[5], boundingBox[7]];
+
+  const minX = Math.max(0, Math.floor(Math.min(...xs)));
+  const minY = Math.max(0, Math.floor(Math.min(...ys)));
+  const maxX = Math.min(imageWidth, Math.ceil(Math.max(...xs)));
+  const maxY = Math.min(imageHeight, Math.ceil(Math.max(...ys)));
+
+  const w = maxX - minX;
+  const h = maxY - minY;
+
+  if (w <= 0 || h <= 0) return null;
+
+  const padX = Math.max(8, Math.floor(w * 0.25));
+  const padY = Math.max(6, Math.floor(h * 0.45));
+
+  const x = Math.max(0, minX - padX);
+  const y = Math.max(0, minY - padY);
+  const paddedW = Math.min(imageWidth - x, w + padX * 2);
+  const paddedH = Math.min(imageHeight - y, h + padY * 2);
+
+  return { x, y, w: paddedW, h: paddedH };
+}
+
+function collectOcrBlurRegions(ocrResult, imageWidth, imageHeight) {
+  const regions = [];
+  const pages = ocrResult.readResults || [];
+
+  for (const page of pages) {
+    const lines = page.lines || [];
+
+    for (const line of lines) {
+      const rect = boundingBoxToRect(line.boundingBox, imageWidth, imageHeight);
+      if (rect) regions.push(rect);
+    }
+  }
+
+  return regions;
+}
+
+function blurRegions(image, regions) {
+  const target = image.clone();
+
+  for (const region of regions) {
+    const x = Math.max(0, Math.floor(region.x));
+    const y = Math.max(0, Math.floor(region.y));
+    const w = Math.min(target.bitmap.width - x, Math.floor(region.w));
+    const h = Math.min(target.bitmap.height - y, Math.floor(region.h));
+
+    if (w < 4 || h < 4) continue;
+
+    const patch = target.clone().crop(x, y, w, h).blur(TEXT_BLUR_RADIUS);
+    target.composite(patch, x, y);
+  }
+
+  return target;
 }
 
 function cropAroundRectangle(image, rect) {
@@ -226,12 +338,22 @@ async function fetchAndCropCarImage() {
         continue;
       }
 
-      const fullImage = image.clone().quality(88);
+      let ocrRegions = [];
+      try {
+        const ocrResult = await readTextWithVision(originalBuffer);
+        ocrRegions = collectOcrBlurRegions(ocrResult, width, height);
+      } catch (ocrErr) {
+        console.log("OCR blur skipped:", ocrErr.message);
+      }
+
+      const sanitizedImage = blurRegions(image, ocrRegions);
+
+      const fullImage = sanitizedImage.clone().quality(88);
       const fullBuffer = await fullImage.getBufferAsync(Jimp.MIME_JPEG);
 
       const croppedImage = bestVehicle
-        ? cropAroundRectangle(image, bestVehicle.rectangle)
-        : centerCrop(image);
+        ? cropAroundRectangle(sanitizedImage, bestVehicle.rectangle)
+        : centerCrop(sanitizedImage);
 
       const croppedBuffer = await croppedImage
         .quality(90)
@@ -258,7 +380,9 @@ async function fetchAndCropCarImage() {
         pixabay_id: candidate.id,
         tags: candidate.tags || "",
         detected_object: bestVehicle ? bestVehicle.object : null,
-        attempts_used: i + 1
+        ocr_blur_regions: ocrRegions.length,
+        attempts_used: i + 1,
+        autovisa_version: "v3-ocr-blur"
       };
     } catch (err) {
       console.log("Skipping image candidate:", err.message);
