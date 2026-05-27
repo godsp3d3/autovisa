@@ -8,10 +8,12 @@ const { randomUUID } = require("crypto");
 const FULL_CONTAINER = "full-images";
 const CROPPED_CONTAINER = "cropped-details";
 
-const MAX_FETCH_ATTEMPTS = 12;
+const MAX_FETCH_ATTEMPTS = 16;
 const OCR_POLL_ATTEMPTS = 12;
 const OCR_POLL_DELAY_MS = 650;
 const TEXT_BLUR_RADIUS = 12;
+const PIXABAY_PER_PAGE = 50;
+const PIXABAY_MAX_PAGE = 10;
 
 const VEHICLE_WORDS = [
   "car",
@@ -36,13 +38,15 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 async function uploadBuffer(blobServiceClient, buffer, containerName, prefix) {
   const blobName = `${prefix}_${randomUUID()}.jpg`;
 
   const containerClient = blobServiceClient.getContainerClient(containerName);
-  await containerClient.createIfNotExists({
-    access: "blob"
-  });
+  await containerClient.createIfNotExists({ access: "blob" });
 
   const blobClient = containerClient.getBlockBlobClient(blobName);
 
@@ -66,9 +70,7 @@ async function analyzeImageWithVision(imageBuffer) {
   const endpoint = normalizeEndpoint(process.env.AZURE_VISION_ENDPOINT);
   const key = process.env.AZURE_VISION_API_KEY;
 
-  const url =
-    `${endpoint}/vision/v3.2/analyze` +
-    `?visualFeatures=Objects,Tags&language=en`;
+  const url = `${endpoint}/vision/v3.2/analyze?visualFeatures=Objects,Tags&language=en`;
 
   const response = await axios.post(url, imageBuffer, {
     headers: {
@@ -84,7 +86,6 @@ async function analyzeImageWithVision(imageBuffer) {
 async function readTextWithVision(imageBuffer) {
   const endpoint = normalizeEndpoint(process.env.AZURE_VISION_ENDPOINT);
   const key = process.env.AZURE_VISION_API_KEY;
-
   const analyzeUrl = `${endpoint}/vision/v3.2/read/analyze?language=en`;
 
   const submitResponse = await axios.post(analyzeUrl, imageBuffer, {
@@ -105,9 +106,7 @@ async function readTextWithVision(imageBuffer) {
     await sleep(OCR_POLL_DELAY_MS);
 
     const resultResponse = await axios.get(operationLocation, {
-      headers: {
-        "Ocp-Apim-Subscription-Key": key
-      },
+      headers: { "Ocp-Apim-Subscription-Key": key },
       timeout: 20000
     });
 
@@ -127,7 +126,6 @@ async function readTextWithVision(imageBuffer) {
 
 function findBestVehicleObject(visionResult, imageWidth, imageHeight) {
   const objects = visionResult.objects || [];
-
   let best = null;
   let bestArea = 0;
 
@@ -176,8 +174,8 @@ function boundingBoxToRect(boundingBox, imageWidth, imageHeight) {
 
   if (w <= 0 || h <= 0) return null;
 
-  const padX = Math.max(8, Math.floor(w * 0.25));
-  const padY = Math.max(6, Math.floor(h * 0.45));
+  const padX = Math.max(10, Math.floor(w * 0.35));
+  const padY = Math.max(8, Math.floor(h * 0.55));
 
   const x = Math.max(0, minX - padX);
   const y = Math.max(0, minY - padY);
@@ -224,7 +222,6 @@ function blurRegions(image, regions) {
 function cropAroundRectangle(image, rect) {
   const width = image.bitmap.width;
   const height = image.bitmap.height;
-
   const padding = 0.25;
 
   let x = Math.max(0, Math.floor(rect.x - rect.w * padding));
@@ -244,7 +241,6 @@ function centerCrop(image) {
   const width = image.bitmap.width;
   const height = image.bitmap.height;
   const size = Math.floor(Math.min(width, height) * 0.55);
-
   const x = Math.floor((width - size) / 2);
   const y = Math.floor((height - size) / 2);
 
@@ -252,15 +248,18 @@ function centerCrop(image) {
 }
 
 async function fetchPixabayCandidates() {
+  const page = randomInt(1, PIXABAY_MAX_PAGE);
+
   const response = await axios.get("https://pixabay.com/api/", {
     params: {
       key: process.env.PIXABAY_API_KEY,
-      q: "car automobile vehicle",
+      q: "car automobile vehicle classic car sports car",
       category: "transportation",
       image_type: "photo",
       safesearch: "true",
       orientation: "horizontal",
-      per_page: 50
+      per_page: PIXABAY_PER_PAGE,
+      page
     },
     timeout: 20000
   });
@@ -279,6 +278,29 @@ async function downloadImage(url) {
   });
 
   return Buffer.from(response.data);
+}
+
+async function applyOcrBlurToCroppedImage(croppedImage) {
+  let regions = [];
+  let blurredImage = croppedImage.clone();
+
+  try {
+    const preOcrBuffer = await croppedImage.clone().quality(90).getBufferAsync(Jimp.MIME_JPEG);
+    const ocrResult = await readTextWithVision(preOcrBuffer);
+    regions = collectOcrBlurRegions(
+      ocrResult,
+      croppedImage.bitmap.width,
+      croppedImage.bitmap.height
+    );
+    blurredImage = blurRegions(croppedImage, regions);
+  } catch (ocrErr) {
+    console.log("OCR blur skipped:", ocrErr.message);
+  }
+
+  return {
+    image: blurredImage,
+    regions
+  };
 }
 
 async function fetchAndCropCarImage() {
@@ -316,46 +338,27 @@ async function fetchAndCropCarImage() {
     try {
       const originalBuffer = await downloadImage(sourceUrl);
       const image = await Jimp.read(originalBuffer);
-
       const width = image.bitmap.width;
       const height = image.bitmap.height;
 
-      if (width < 600 || height < 400) {
-        continue;
-      }
+      if (width < 600 || height < 400) continue;
 
       const visionResult = await analyzeImageWithVision(originalBuffer);
-
-      const bestVehicle = findBestVehicleObject(
-        visionResult,
-        width,
-        height
-      );
-
+      const bestVehicle = findBestVehicleObject(visionResult, width, height);
       const hasVehicleTag = tagsContainVehicle(visionResult);
 
-      if (!bestVehicle && !hasVehicleTag) {
-        continue;
-      }
+      if (!bestVehicle && !hasVehicleTag) continue;
 
-      let ocrRegions = [];
-      try {
-        const ocrResult = await readTextWithVision(originalBuffer);
-        ocrRegions = collectOcrBlurRegions(ocrResult, width, height);
-      } catch (ocrErr) {
-        console.log("OCR blur skipped:", ocrErr.message);
-      }
+      // Full image is intentionally not blurred in v3. Only the quiz/cropped image is sanitized.
+      const fullBuffer = await image.clone().quality(88).getBufferAsync(Jimp.MIME_JPEG);
 
-      const sanitizedImage = blurRegions(image, ocrRegions);
+      const rawCroppedImage = bestVehicle
+        ? cropAroundRectangle(image, bestVehicle.rectangle)
+        : centerCrop(image);
 
-      const fullImage = sanitizedImage.clone().quality(88);
-      const fullBuffer = await fullImage.getBufferAsync(Jimp.MIME_JPEG);
+      const blurredCrop = await applyOcrBlurToCroppedImage(rawCroppedImage);
 
-      const croppedImage = bestVehicle
-        ? cropAroundRectangle(sanitizedImage, bestVehicle.rectangle)
-        : centerCrop(sanitizedImage);
-
-      const croppedBuffer = await croppedImage
+      const croppedBuffer = await blurredCrop.image
         .quality(90)
         .getBufferAsync(Jimp.MIME_JPEG);
 
@@ -380,9 +383,9 @@ async function fetchAndCropCarImage() {
         pixabay_id: candidate.id,
         tags: candidate.tags || "",
         detected_object: bestVehicle ? bestVehicle.object : null,
-        ocr_blur_regions: ocrRegions.length,
+        ocr_blur_regions: blurredCrop.regions.length,
         attempts_used: i + 1,
-        autovisa_version: "v3-ocr-blur"
+        autovisa_version: "v3-cropped-ocr-blur"
       };
     } catch (err) {
       console.log("Skipping image candidate:", err.message);
@@ -392,7 +395,7 @@ async function fetchAndCropCarImage() {
 
   return {
     error: "No suitable car image found after validation.",
-    attempts: attempts
+    attempts
   };
 }
 
