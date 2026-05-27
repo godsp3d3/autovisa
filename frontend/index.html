@@ -66,6 +66,7 @@
 
     async function startQuiz() {
         const count = parseInt(document.getElementById("count").value);
+
         if (isNaN(count) || count <= 0) {
             alert("Anna kelvollinen määrä kuvia (1-50).");
             return;
@@ -82,14 +83,18 @@
         document.getElementById("cropped").src = "";
         document.getElementById("full").src = "";
 
-        // Fetch extra attempts because duplicates and failed images are filtered out.
-        const maxFetches = count * 3;
+        // Large fetch budget because OCR, car detection and duplicate filtering
+        // intentionally reject many images.
+        const maxFetches = Math.max(count * 8, 40);
 
         for (let i = 0; i < maxFetches; i++) {
-            if (imageList.length >= count) break;
+            if (imageList.length >= count) {
+                break;
+            }
 
             try {
-                const response = await fetch("/api/fetchCarImages");
+                const excludeIds = Array.from(seenPixabayIds).join(",");
+                const response = await fetch(`/api/fetchCarImages?excludeIds=${encodeURIComponent(excludeIds)}`);
                 const data = await response.json();
 
                 if (!response.ok) {
@@ -99,6 +104,11 @@
 
                 if (!data.cropped_image_url || !data.full_image_url) {
                     console.error("Invalid image payload:", data);
+                    continue;
+                }
+
+                if (!data.pixabay_id) {
+                    console.error("Missing Pixabay ID:", data);
                     continue;
                 }
 
@@ -122,14 +132,20 @@
             return;
         }
 
+        if (imageList.length < count) {
+            alert(`Saatiin vain ${imageList.length} uniikkia kuvaa pyydetyn ${count} sijaan.`);
+        }
+
         document.getElementById("totalCount").textContent = imageList.length;
         document.getElementById("quiz").style.display = "block";
+
         showImage();
     }
 
     async function resetAndStart() {
         try {
             const response = await fetch("/api/resetQuiz", { method: "POST" });
+
             if (response.ok) {
                 startQuiz();
             } else {
